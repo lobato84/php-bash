@@ -1,0 +1,36 @@
+#!/usr/bin/env php
+<?php
+require __DIR__ . '/../vendor/autoload.php';
+
+use App\PtyServer;
+use Ratchet\Http\HttpServer;
+use Ratchet\WebSocket\WsServer;
+use Ratchet\Server\IoServer;
+use React\EventLoop\Factory as LoopFactory;
+use React\Socket\SocketServer;
+
+$port    = (int)($_ENV['WS_PORT']    ?? getenv('WS_PORT')    ?: 8081);
+$shell   =        ($_ENV['PTY_SHELL'] ?? getenv('PTY_SHELL')  ?: '/bin/bash');
+$timeout = (int)($_ENV['PTY_TIMEOUT'] ?? getenv('PTY_TIMEOUT')?: 0);
+$nice    = (int)($_ENV['PTY_NICE']    ?? getenv('PTY_NICE')    ?: 0);
+
+// 1) Loop compatible PHP 7.4
+$loop = LoopFactory::create();
+
+// 2) Nuestro componente con loop inyectado
+$pty = new PtyServer($loop, $shell, $timeout, $nice);
+
+// 3) WS + HTTP
+$ws   = new WsServer($pty);
+$http = new HttpServer($ws);
+
+// 4) Socket con loop y bind 0.0.0.0
+$socket = new SocketServer("0.0.0.0:{$port}", [], $loop);
+
+// 5) IoServer con loop
+$server = new IoServer($http, $socket, $loop);
+
+echo "PTY WebSocket server listening on ws://0.0.0.0:{$port}\n";
+
+// 6) Run
+$loop->run();
